@@ -4,20 +4,17 @@
 #include <functional>
 #include <memory>
 
-
 template <typename Out, typename In>
 using CallbackFunction = std::function<Out(In)>;
-
 
 template <class C>
 class Caller
 {
-public:
-    void ConnectCallback(CallbackFunction<C,C> callback)
+  public:
+    void ConnectCallback(CallbackFunction<C, C> callback)
     {
         m_callback = callback;
     }
-
 
     void InitiateCallback()
     {
@@ -27,65 +24,62 @@ public:
         std::cout << "Result:" << i << std::endl;
     }
 
-private:
-    CallbackFunction<C,C> m_callback;
-
+  private:
+    CallbackFunction<C, C> m_callback;
 };
-
 
 template <class C>
 class Callee
 {
-public:
+  public:
     Callee(C i)
-        : m_i(i) 
+        : m_value(i)
     {
-        printf("ctor: Callee::Callee() \n"); 
+        printf("ctor: Callee::Callee() \n");
     }
 
     // Copy ctor
-    Callee(const Callee& other)
-        : m_i(other.m_i)
+    Callee(const Callee &other)
+        : m_value(other.m_value)
     {
-        printf("copy ctor: Callee::Callee(const Callee& other) \n"); 
+        printf("copy ctor: Callee::Callee(const Callee& other) \n");
     }
 
     // Move ctor
-    Callee(Callee&& other)
-        : m_i(std::move(other.m_i))
+    Callee(Callee &&other)
+        : m_value(std::move(other.m_value))
     {
         printf("move ctor: Callee::Callee(Callee&& other) \n");
     }
 
-    Callee& operator=(const Callee& other)
+    Callee &operator=(const Callee &other)
     {
         printf("copy assignment of Callee \n");
-        //std::swap(m_i, other.m_i);
-        m_i = other.m_i;
+        //std::swap(m_value, other.m_value);
+        m_value = other.m_value;
         return *this;
     }
 
-    Callee& operator=(Callee&& other)
+    Callee &operator=(Callee &&other)
     {
         printf("move assignment of Callee \n");
-        m_i = std::move(other.m_i);
+        m_value = std::move(other.m_value);
         return *this;
     }
-    
+
     ~Callee()
-    { 
+    {
         printf("dtor: Callee::~Callee() \n");
     }
 
-
-    C callbackFunction(C i)
+    C CallbackFunctionImp(C value)
     {
-        printf("  Callee::callbackFunction() \n");
-        return m_i * i; 
+        printf("  Callee::CallbackFunctionImp() \n");
+        return m_value * value;
     }
 
-private:
-    C m_i;
+  private:
+    C m_value;
 };
 
 int main()
@@ -94,28 +88,42 @@ int main()
         using MyType = int;
         std::unique_ptr<Caller<MyType>> caller(new Caller<MyType>());
         {
-            std::shared_ptr<Callee<MyType>> callee(new Callee<MyType>(5));
+            std::shared_ptr<Callee<MyType>> callee(new Callee<MyType>(10));
             printf("callee.use_count(): %li \n ", callee.use_count());
 
-            caller->ConnectCallback(std::bind(&Callee<MyType>::callbackFunction, callee, std::placeholders::_1));
+            caller->ConnectCallback(std::bind(&Callee<MyType>::CallbackFunctionImp, callee, std::placeholders::_1));
 
-            //caller->connectCallback([callee](int i) { return callee->callbackFunction(i); });
-            //delete callee;
-            //callee = nullptr;
-            
-            //Callee<MyType>* callee2(new Callee<MyType>(10));
+            // Important to note that you can achieve same results with Lambda expression but
+            // if you capture callee by reference ref count of the shared_ptr is not increased.
+            // Leading to situation where object is freed and callback called to invalid memory.
+            // Where std::bind gives compile time error.
+            //
+            // caller->ConnectCallback([&callee](int i) { return callee->CallbackFunctionImp(i); });  // Ref count issue
+            // caller->ConnectCallback([&callee](int i) { return callee->CallbackFunctionImp(i); });  // OK
+
             printf("callee.use_count(): %li \n ", callee.use_count());
-            // [&callee](int i) { return callee.callbackFunction(i); });
         }
-        //printf("callee.use_count(): %li \n ", callee.use_count());
-        // Note how this is getting closer to the ultimate:
-        //     caller.connectCallback(callee.callbackFunction);
 
         // Test the callback
         caller->InitiateCallback();
     }
-    printf("End of main \n ");
+    
+    // Error situation implementation with Lambda and capture by reference
+    {
+        using MyType = int;
+        std::unique_ptr<Caller<MyType>> caller(new Caller<MyType>());
+        {
+            std::shared_ptr<Callee<MyType>> callee(new Callee<MyType>(5));
+            printf("callee.use_count(): %li \n ", callee.use_count());
+
+            caller->ConnectCallback([&callee](int i) { return callee->CallbackFunctionImp(i); });
+
+            printf("callee.use_count(): %li \n ", callee.use_count());
+        }
+        // Test the callback
+        caller->InitiateCallback();
+    }
+    printf("\n :::End of main::: \n ");
 
     return 0;
 }
-
