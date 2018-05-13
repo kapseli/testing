@@ -1,0 +1,6 @@
+# git ignore
+*.out
+*.o
+.vscode
+.d/ 
+bin/
